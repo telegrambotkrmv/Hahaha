@@ -22,8 +22,10 @@ ADMIN_IDS = set()
 WAITING_BOT_USERNAME = set()
 WAITING_USERBOT_CODE = set()
 
+
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
+
 
 def admin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -39,9 +41,10 @@ def admin_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🔌 Userbot uzish", callback_data="disconnect_userbot"),
         ],
         [
-            InlineKeyboardButton(text="🔄 Holatni yangilash", callback_data="refresh_status"),
+            InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_status"),
         ],
     ])
+
 
 async def admin_panel_text() -> str:
     bots = db.get_downloader_bots()
@@ -51,8 +54,7 @@ async def admin_panel_text() -> str:
     if bots:
         bots_text = ""
         for b in bots:
-            is_active = b.get("active", False)
-            mark = "🟢" if is_active else "🔴"
+            mark = "🟢" if b.get("active", False) else "🔴"
             bots_text += f"{mark} @{b['username']}\n"
     else:
         bots_text = "Hech qanday bot qo'shilmagan\n"
@@ -65,8 +67,18 @@ async def admin_panel_text() -> str:
         f"*Userbot:* {ub_status}\n"
         f"*Faol bot:* {active_text}\n\n"
         f"*Downloader botlar:*\n{bots_text}\n"
-        "Quyidagi tugmalardan foydalaning:"
+        "*Buyruqlar:*\n"
+        "/addbot @username — bot qo'shish\n"
+        "/removebot @username — botni o'chirish\n"
+        "/listbots — botlar ro'yxati\n"
+        "/connectuserbot — userbotni ulash\n"
+        "/disconnectuserbot — userbotni uzish\n"
+        "/userbotcode aa12345 — kodni kiritish\n\n"
+        "Yoki quyidagi tugmalardan foydalaning:"
     )
+
+
+# ───────────────────── START ─────────────────────
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -77,13 +89,8 @@ async def cmd_start(message: Message):
         "Admin kirish: /login parol"
     )
 
-@dp.message(Command("admin"))
-async def cmd_admin(message: Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("Avval tizimga kiring: /login parol")
-        return
-    text = await admin_panel_text()
-    await message.answer(text, parse_mode="Markdown", reply_markup=admin_keyboard())
+
+# ───────────────────── AUTH ─────────────────────
 
 @dp.message(Command("login"))
 async def cmd_login(message: Message):
@@ -102,6 +109,123 @@ async def cmd_login(message: Message):
     else:
         await message.answer("❌ Noto'g'ri parol!")
 
+
+# ───────────────────── ADMIN PANEL ─────────────────────
+
+@dp.message(Command("admin"))
+async def cmd_admin(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("Avval tizimga kiring: /login parol")
+        return
+    text = await admin_panel_text()
+    await message.answer(text, parse_mode="Markdown", reply_markup=admin_keyboard())
+
+
+# ───────────────────── BOT MANAGEMENT COMMANDS ─────────────────────
+
+@dp.message(Command("addbot"))
+async def cmd_addbot(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Foydalanish: /addbot @botusername")
+        return
+    username = parts[1].strip().lstrip("@")
+    db.add_downloader_bot(username)
+    await message.answer(f"✅ @{username} qo'shildi!")
+    panel = await admin_panel_text()
+    await message.answer(panel, parse_mode="Markdown", reply_markup=admin_keyboard())
+
+
+@dp.message(Command("removebot"))
+async def cmd_removebot(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Foydalanish: /removebot @botusername")
+        return
+    username = parts[1].strip().lstrip("@")
+    db.remove_downloader_bot(username)
+    await message.answer(f"✅ @{username} o'chirildi!")
+    panel = await admin_panel_text()
+    await message.answer(panel, parse_mode="Markdown", reply_markup=admin_keyboard())
+
+
+@dp.message(Command("listbots"))
+async def cmd_listbots(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    bots = db.get_downloader_bots()
+    if not bots:
+        await message.answer("Hech qanday bot yo'q.")
+        return
+    text = "📋 *Downloader botlar:*\n\n"
+    for b in bots:
+        mark = "🟢" if b.get("active", False) else "🔴"
+        text += f"{mark} @{b['username']}\n"
+    await message.answer(text, parse_mode="Markdown")
+
+
+# ───────────────────── USERBOT COMMANDS ─────────────────────
+
+@dp.message(Command("connectuserbot"))
+async def cmd_connectuserbot(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer("⏳ Userbot ulanmoqda...")
+    result = await userbot_manager.start_auth()
+    if result == "already_connected":
+        await message.answer("✅ Userbot allaqachon ulangan!")
+    elif result == "code_sent":
+        WAITING_USERBOT_CODE.add(message.from_user.id)
+        await message.answer(
+            "📱 Telegramdan kod keldi!\n\n"
+            "Kodni /userbotcode orqali kiriting:\n"
+            "Misol: kod *12345* bo'lsa:\n"
+            "/userbotcode aa12345\n\n"
+            "(Oldiga aa qo'shing)",
+            parse_mode="Markdown"
+        )
+    else:
+        await message.answer(f"❌ Xatolik: {result}")
+
+
+@dp.message(Command("userbotcode"))
+async def cmd_userbotcode(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Foydalanish: /userbotcode aa12345")
+        return
+    raw_code = parts[1].strip()
+    code = raw_code.lstrip("a").strip()
+    WAITING_USERBOT_CODE.discard(message.from_user.id)
+    result = await userbot_manager.submit_code(code)
+    if result == "success":
+        db.set_userbot_status(True)
+        await message.answer("✅ Userbot muvaffaqiyatli ulandi!")
+        panel = await admin_panel_text()
+        await message.answer(panel, parse_mode="Markdown", reply_markup=admin_keyboard())
+    else:
+        await message.answer(f"❌ Xatolik: {result}")
+
+
+@dp.message(Command("disconnectuserbot"))
+async def cmd_disconnectuserbot(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    await userbot_manager.disconnect()
+    db.set_userbot_status(False)
+    await message.answer("✅ Userbot uzildi.")
+    panel = await admin_panel_text()
+    await message.answer(panel, parse_mode="Markdown", reply_markup=admin_keyboard())
+
+
+# ───────────────────── INLINE KEYBOARD CALLBACKS ─────────────────────
+
 @dp.callback_query(F.data == "add_bot")
 async def cb_add_bot(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
@@ -113,6 +237,7 @@ async def cb_add_bot(callback: CallbackQuery):
         "(masalan: SaveVideo_bot yoki @SaveVideo_bot)"
     )
     await callback.answer()
+
 
 @dp.callback_query(F.data == "remove_bot")
 async def cb_remove_bot(callback: CallbackQuery):
@@ -136,6 +261,7 @@ async def cb_remove_bot(callback: CallbackQuery):
     await callback.message.answer("Qaysi botni o'chirmoqchisiz?", reply_markup=kb)
     await callback.answer()
 
+
 @dp.callback_query(F.data.startswith("del_"))
 async def cb_delete_bot(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
@@ -146,6 +272,7 @@ async def cb_delete_bot(callback: CallbackQuery):
     await callback.answer(f"@{username} o'chirildi!", show_alert=True)
     text = await admin_panel_text()
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=admin_keyboard())
+
 
 @dp.callback_query(F.data == "list_bots")
 async def cb_list_bots(callback: CallbackQuery):
@@ -158,10 +285,11 @@ async def cb_list_bots(callback: CallbackQuery):
         return
     text = "📋 *Downloader botlar:*\n\n"
     for b in bots:
-        mark = "🟢" if b.get("active") else "🔴"
+        mark = "🟢" if b.get("active", False) else "🔴"
         text += f"{mark} @{b['username']}\n"
     await callback.message.answer(text, parse_mode="Markdown")
     await callback.answer()
+
 
 @dp.callback_query(F.data == "connect_userbot")
 async def cb_connect_userbot(callback: CallbackQuery):
@@ -177,12 +305,15 @@ async def cb_connect_userbot(callback: CallbackQuery):
         WAITING_USERBOT_CODE.add(callback.from_user.id)
         await callback.message.answer(
             "📱 Telegramdan kod keldi!\n\n"
-            "Kodni yuboring — oldiga *aa* qo'shing:\n"
-            "Misol: kod *12345* bo'lsa → *aa12345* yuboring",
+            "Kodni /userbotcode orqali kiriting:\n"
+            "Misol: kod *12345* bo'lsa:\n"
+            "/userbotcode aa12345\n\n"
+            "(Oldiga aa qo'shing)",
             parse_mode="Markdown"
         )
     else:
         await callback.message.answer(f"❌ Xatolik: {result}")
+
 
 @dp.callback_query(F.data == "disconnect_userbot")
 async def cb_disconnect_userbot(callback: CallbackQuery):
@@ -195,6 +326,7 @@ async def cb_disconnect_userbot(callback: CallbackQuery):
     text = await admin_panel_text()
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=admin_keyboard())
 
+
 @dp.callback_query(F.data == "refresh_status")
 async def cb_refresh(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
@@ -203,6 +335,9 @@ async def cb_refresh(callback: CallbackQuery):
     text = await admin_panel_text()
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=admin_keyboard())
     await callback.answer("Yangilandi!")
+
+
+# ───────────────────── MESSAGE RELAY ─────────────────────
 
 @dp.message(F.text)
 async def handle_message(message: Message):
@@ -228,7 +363,7 @@ async def handle_message(message: Message):
             panel = await admin_panel_text()
             await message.answer(panel, parse_mode="Markdown", reply_markup=admin_keyboard())
         else:
-            await message.answer(f"❌ Xatolik: {result}\n\nQayta urinish: /admin")
+            await message.answer(f"❌ Xatolik: {result}")
         return
 
     active_bot = db.get_active_bot()
@@ -251,7 +386,6 @@ async def handle_message(message: Message):
     try:
         result = await userbot_manager.forward_message(
             bot_username=active_bot["username"],
-            user_message=message,
             text=text
         )
 
@@ -290,9 +424,11 @@ async def handle_message(message: Message):
         except Exception:
             pass
 
+
 async def main():
     logger.info("Bot ishga tushmoqda...")
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
