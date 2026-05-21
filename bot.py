@@ -21,6 +21,7 @@ userbot_manager = UserbotManager(db)
 ADMIN_IDS = set()
 WAITING_BOT_USERNAME = set()
 WAITING_USERBOT_CODE = set()
+WAITING_PASSWORD = set()
 
 
 def is_admin(user_id: int) -> bool:
@@ -96,10 +97,16 @@ async def cmd_start(message: Message):
 async def cmd_login(message: Message):
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.answer("Foydalanish: /login parol")
+        WAITING_PASSWORD.add(message.from_user.id)
+        await message.answer("🔑 Parolni kiriting:")
         return
-    if parts[1].strip() == ADMIN_PASSWORD:
+    await _do_login(message, parts[1].strip())
+
+
+async def _do_login(message: Message, password: str):
+    if password == ADMIN_PASSWORD:
         ADMIN_IDS.add(message.from_user.id)
+        WAITING_PASSWORD.discard(message.from_user.id)
         text = await admin_panel_text()
         await message.answer(
             "✅ Xush kelibsiz, admin!\n\n" + text,
@@ -107,6 +114,7 @@ async def cmd_login(message: Message):
             reply_markup=admin_keyboard()
         )
     else:
+        WAITING_PASSWORD.discard(message.from_user.id)
         await message.answer("❌ Noto'g'ri parol!")
 
 
@@ -344,6 +352,10 @@ async def handle_message(message: Message):
     user_id = message.from_user.id
     text = message.text.strip()
 
+    if user_id in WAITING_PASSWORD:
+        await _do_login(message, text)
+        return
+
     if user_id in WAITING_BOT_USERNAME:
         WAITING_BOT_USERNAME.discard(user_id)
         username = text.lstrip("@").strip()
@@ -427,7 +439,8 @@ async def handle_message(message: Message):
 
 async def main():
     logger.info("Bot ishga tushmoqda...")
-    await dp.start_polling(bot)
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
 if __name__ == "__main__":
