@@ -204,7 +204,8 @@ async def handle_link(message: Message):
             else:
                 await message.answer("✅ Javobi topilmadi, lekin so'rov yuborildi.")
         else:
-            await message.answer(f"❌ Xatolik: {result.get('error', 'Noma\\'lum xato')}")
+            err_msg = result.get('error', "Noma'lum xato")
+            await message.answer(f"❌ Xatolik: {err_msg}")
     except Exception as e:
         logger.error(f"Error: {e}")
         await message.answer("❌ Xatolik yuz berdi. Qayta urinib ko'ring.")
