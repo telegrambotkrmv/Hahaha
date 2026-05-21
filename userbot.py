@@ -79,7 +79,7 @@ class UserbotManager:
             except Exception as e:
                 logger.error(f"Handler error: {e}")
 
-    async def forward_message(self, bot_username: str, user_message, text: str):
+    async def forward_message(self, bot_username: str, text: str):
         try:
             if not self.client or not self.client.is_connected():
                 return {"success": False, "error": "Userbot ulanmagan"}
