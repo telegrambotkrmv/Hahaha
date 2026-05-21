@@ -83,10 +83,10 @@ async def admin_panel_text() -> str:
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
-        "Salom! Men relay botman.\n\n"
-        "Menga xabar yoki link yuboring — men uni ulangan botga yuborib, "
-        "natijani sizga qaytaraman.\n\n"
-        "Admin kirish: /login parol"
+        "Salom! 👋\n\n"
+        "Instagram, TikTok yoki YouTube linkini yuboring — "
+        "videoni yuklab beraman.\n\n"
+        "Qo'shiq nomini ham yuborsangiz bo'ladi."
     )
 
 
